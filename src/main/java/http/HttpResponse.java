@@ -9,16 +9,21 @@ import util.HttpRequestUtils;
 import java.io.*;
 import java.nio.file.Files;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 public class HttpResponse {
     private static final Logger log = LoggerFactory.getLogger(http.HttpResponse.class);
     private DataOutputStream dos = null;
+    private Map<String, String> headers = new HashMap<String, String>();
 
     public HttpResponse(OutputStream out) {
         dos = new DataOutputStream(out);
     }
-
+    public void addHeader(String key, String value) {
+        headers.put(key, value);
+    }
     public void response(HttpRequest httpRequest) throws IOException {
         String url = getDefaultUrl(httpRequest.getPath());
 
@@ -26,17 +31,18 @@ public class HttpResponse {
             User user = new User(httpRequest.getParameter("userId"), httpRequest.getParameter("password"), httpRequest.getParameter("name"), httpRequest.getParameter("email"));
             log.debug("user : {}", user);
             DataBase.addUser(user);
-            response302Header(dos);
+            response302Header();
         } else if ("/user/login".equals(url)) {
             User user = DataBase.findUserById(httpRequest.getParameter("userId"));
             if (user != null) {
                 if (user.login(httpRequest.getParameter("password"))) {
-                    response302LoginSuccessHeader(dos);
+                    addHeader("Set-Cookie", "logined=true; Path=/");
+                    sendRedirect("/index.html");
                 } else {
-                    responseResource("/user/login_failed.html");
+                    sendRedirect("/user/login_failed.html");
                 }
             } else {
-                responseResource("/user/login_failed.html");
+                sendRedirect("/user/login_failed.html");
             }
         } else if ("/user/list".equals(url)) {
             if (!isLogin(httpRequest.getHeader("Cookie"))) {
@@ -55,17 +61,57 @@ public class HttpResponse {
             }
             sb.append("</table>");
             byte[] body = sb.toString().getBytes();
-            response200Header(dos, body.length);
-            responseBody(dos, body);
+            forwardBody(sb.toString());
         }
-
-        else if (httpRequest.getPath().endsWith(".css")) {
-            responseCssResource(url);
-        } else {
-            responseResource(url);
+        else {
+            forward(httpRequest.getPath());
+        }
+    }
+    public void forward(String url) {
+        try {
+            byte[] body = Files.readAllBytes(new File("./webapp" + url).toPath());
+            if (url.endsWith(".css")) {
+                headers.put("Content-Type", "text/css");
+            } else if (url.endsWith(".js")) {
+                headers.put("Content-Type", "application/javascript");
+            } else {
+                headers.put("Content-Type", "text/html;charset=utf-8");
+            }
+            headers.put("Content-Length", body.length + "");
+            response200Header(body.length);
+            responseBody(body);
+        } catch (IOException e) {
+            log.error(e.getMessage());
         }
     }
 
+    public void forwardBody(String body) {
+        byte[] contents = body.getBytes();
+        headers.put("Content-Type", "text/html;charset=utf-8");
+        headers.put("Content-Length", contents.length + "");
+        response200Header(contents.length);
+        responseBody(contents);
+    }
+    public void sendRedirect(String redirectUrl) {
+        try {
+            dos.writeBytes("HTTP/1.1 302 Found \r\n");
+            processHeaders();
+            dos.writeBytes("Location: " + redirectUrl + " \r\n");
+            dos.writeBytes("\r\n");
+        } catch (IOException e) {
+            log.error(e.getMessage());
+        }
+    }
+    private void processHeaders() {
+        try {
+            Set<String> keys = headers.keySet();
+            for (String key : keys) {
+                dos.writeBytes(key + ": " + headers.get(key) + " \r\n");
+            }
+        } catch (IOException e) {
+            log.error(e.getMessage());
+        }
+    }
     private String getDefaultUrl(String url) {
         if (url.equals("/")) {
             url = "/index.html";
@@ -74,26 +120,27 @@ public class HttpResponse {
     }
     private void responseResource(String url) throws IOException {
         byte[] body = Files.readAllBytes(new File("./webapp" + url).toPath());
-        response200Header(dos, body.length);
-        responseBody(dos, body);
+        response200Header(body.length);
+        responseBody(body);
     }
     private void responseCssResource(String url) throws IOException {
         byte[] body = Files.readAllBytes(new File("./webapp" + url).toPath());
-        response200CssHeader(dos, body.length);
-        responseBody(dos, body);
+        response200CssHeader(body.length);
+        responseBody(body);
     }
-    private void response200Header(DataOutputStream dos, int lengthOfBodyContent) {
+    private void response200Header(int lengthOfBodyContent) {
         try {
             dos.writeBytes("HTTP/1.1 200 OK \r\n");
-            dos.writeBytes("Content-Type: text/html;charset=utf-8\r\n");
-            dos.writeBytes("Content-Length: " + lengthOfBodyContent + "\r\n");
+            processHeaders();
+//            dos.writeBytes("Content-Type: text/html;charset=utf-8\r\n");
+//            dos.writeBytes("Content-Length: " + lengthOfBodyContent + "\r\n");
             dos.writeBytes("\r\n");
         } catch (IOException e) {
             log.error(e.getMessage());
         }
     }
 
-    private void response200CssHeader(DataOutputStream dos, int lengthOfBodyContent) {
+    private void response200CssHeader(int lengthOfBodyContent) {
         try {
             dos.writeBytes("HTTP/1.1 200 OK \r\n");
             dos.writeBytes("Content-Type: text/css;charset=utf-8\r\n");
@@ -104,7 +151,7 @@ public class HttpResponse {
         }
     }
 
-    private void response302Header(DataOutputStream dos) {
+    private void response302Header() {
         try {
             dos.writeBytes("HTTP/1.1 302 Redirect \r\n");
             dos.writeBytes("Location: /index.html \r\n");
@@ -114,7 +161,7 @@ public class HttpResponse {
         }
     }
 
-    private void response302LoginSuccessHeader(DataOutputStream dos) {
+    private void response302LoginSuccessHeader() {
         try {
             dos.writeBytes("HTTP/1.1 302 Redirect \r\n");
             dos.writeBytes("Set-Cookie: logined=true \r\n");
@@ -125,7 +172,7 @@ public class HttpResponse {
         }
     }
 
-    private void responseBody(DataOutputStream dos, byte[] body) {
+    private void responseBody(byte[] body) {
         try {
             dos.write(body, 0, body.length);
             dos.writeBytes("\r\n");
