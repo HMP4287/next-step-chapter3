@@ -3,6 +3,7 @@ package http;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -15,7 +16,8 @@ public class HttpHeaders {
     void add(String header) {
         log.debug("header : {}", header);
         String[] splitedHeaders = header.split(":");
-        headers.put(splitedHeaders[0], splitedHeaders[1].trim());
+        headers.put(splitedHeaders[0], splitedHeaders[1].trim()); // fixme login true true 나올 수 잆음
+
     }
     String getHeader(String name) {
         return headers.get(name);

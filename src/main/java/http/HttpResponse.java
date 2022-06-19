@@ -21,24 +21,17 @@ public class HttpResponse {
     }
 
     public void response(HttpRequest httpRequest) throws IOException {
-        // res to res
-        String url = getDefaultUrl(httpRequest.tokens);
+        String url = getDefaultUrl(httpRequest.getPath());
+
         if ("/user/create".equals(url)) {
-            String body = IOUtils.readData(httpRequest.br, httpRequest.contentLength);
-            Map<String, String> params = HttpRequestUtils.parseQueryString(body);
-            User user = new User(params.get("userId"), params.get("password"), params.get("name"),
-                    params.get("email"));
+            User user = new User(httpRequest.getParameter("userId"), httpRequest.getParameter("password"), httpRequest.getParameter("name"), httpRequest.getParameter("email"));
             log.debug("user : {}", user);
             DataBase.addUser(user);
-//            DataOutputStream dos = new DataOutputStream(out);
             response302Header(dos);
         } else if ("/user/login".equals(url)) {
-            String body = IOUtils.readData(httpRequest.br, httpRequest.contentLength);
-            Map<String, String> params = HttpRequestUtils.parseQueryString(body);
-            User user = DataBase.findUserById(params.get("userId"));
+            User user = DataBase.findUserById(httpRequest.getParameter("userId"));
             if (user != null) {
-                if (user.login(params.get("password"))) {
-//                    DataOutputStream dos = new DataOutputStream(out);
+                if (user.login(httpRequest.getParameter("password"))) {
                     response302LoginSuccessHeader(dos);
                 } else {
                     responseResource("/user/login_failed.html");
@@ -47,11 +40,10 @@ public class HttpResponse {
                 responseResource("/user/login_failed.html");
             }
         } else if ("/user/list".equals(url)) {
-            if (!httpRequest.logined) {
+            if (!isLogin(httpRequest.getHeader("Cookie"))) {
                 responseResource("/user/login.html");
                 return;
             }
-
             Collection<User> users = DataBase.findAll();
             StringBuilder sb = new StringBuilder();
             sb.append("<table border='1'>");
@@ -64,46 +56,29 @@ public class HttpResponse {
             }
             sb.append("</table>");
             byte[] body = sb.toString().getBytes();
-//            DataOutputStream dos = new DataOutputStream(out);
             response200Header(dos, body.length);
             responseBody(dos, body);
-        } else if (url.endsWith(".css")) {
+        }
+
+        else if (httpRequest.getPath().endsWith(".css")) {
             responseCssResource(url);
         } else {
             responseResource(url);
         }
     }
 
-    private String getDefaultUrl(String[] tokens) {
-        String url = tokens[1];
+    private String getDefaultUrl(String url) {
         if (url.equals("/")) {
             url = "/index.html";
         }
         return url;
     }
-
-//    private void responseResource(OutputStream out, String url) throws IOException {
-//        DataOutputStream dos = new DataOutputStream(out);
-//        byte[] body = Files.readAllBytes(new File("./webapp" + url).toPath());
-//        response200Header(dos, body.length);
-//        responseBody(dos, body);
-//    }
     private void responseResource(String url) throws IOException {
-//        DataOutputStream dos = new DataOutputStream(out);
         byte[] body = Files.readAllBytes(new File("./webapp" + url).toPath());
         response200Header(dos, body.length);
         responseBody(dos, body);
     }
-
-//    private void responseCssResource(OutputStream out, String url) throws IOException {
-//        DataOutputStream dos = new DataOutputStream(out);
-//        byte[] body = Files.readAllBytes(new File("./webapp" + url).toPath());
-//        response200CssHeader(dos, body.length);
-//        responseBody(dos, body);
-//    }
-
     private void responseCssResource(String url) throws IOException {
-//        DataOutputStream dos = new DataOutputStream(out);
         byte[] body = Files.readAllBytes(new File("./webapp" + url).toPath());
         response200CssHeader(dos, body.length);
         responseBody(dos, body);
@@ -159,5 +134,15 @@ public class HttpResponse {
         } catch (IOException e) {
             log.error(e.getMessage());
         }
+    }
+
+    private boolean isLogin(String line) {
+        String[] headerTokens = line.split(";");
+        Map<String, String> cookies = HttpRequestUtils.parseCookies(headerTokens[0].trim());
+        String value = cookies.get("logined");
+        if (value == null) {
+            return false;
+        }
+        return Boolean.parseBoolean(value);
     }
 }

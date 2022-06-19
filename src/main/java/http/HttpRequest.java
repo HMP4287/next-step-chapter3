@@ -17,10 +17,6 @@ public class HttpRequest {
     private RequestLine requestLine;
     private RequestParams requestParams = new RequestParams();
     private HttpHeaders headers;
-//    InputStream is;
-    String[] tokens;
-    int contentLength;
-    boolean logined;
 
     public HttpRequest(InputStream is) {
         try {
@@ -74,15 +70,6 @@ public class HttpRequest {
         return Integer.parseInt(headerTokens[1].trim());
     }
 
-    private boolean isLogin(String line) {
-        String[] headerTokens = line.split(":");
-        Map<String, String> cookies = HttpRequestUtils.parseCookies(headerTokens[1].split(" ")[1].trim()); // TODO: stream 으로 개발하거나 쿠키 두개 생기는 문제 해결하라
-        String value = cookies.get("logined");
-        if (value == null) {
-            return false;
-        }
-        return Boolean.parseBoolean(value);
-    }
     public HttpMethod getMethod() {
         return requestLine.getMethod();
     }
@@ -94,7 +81,9 @@ public class HttpRequest {
     public String getHeader(String name) {
         return headers.getHeader(name);
     }
-
+    public String getParameter(String name) {
+        return requestParams.getParameter(name);
+    }
     private HttpHeaders processHeaders(BufferedReader br) throws IOException {
         HttpHeaders headers = new HttpHeaders();
         String line;
